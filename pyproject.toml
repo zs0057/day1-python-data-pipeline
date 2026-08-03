@@ -1,0 +1,8 @@
+# 프로그램명: Day 1 데이터 수집 미니 파이프라인 설정
+# 설명: pytest가 프로젝트 루트의 main.py를 import하도록 경로를 지정한다.
+# 작성자: 김지성
+# 변경내용: Step 6 테스트 검색 경로와 Python import 경로를 설정했다.
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
