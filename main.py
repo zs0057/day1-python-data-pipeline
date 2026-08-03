@@ -12,6 +12,7 @@
 """
 
 import asyncio
+from datetime import datetime
 from pathlib import Path
 from time import perf_counter
 from typing import Annotated, Literal, Self
@@ -42,6 +43,7 @@ API_ENDPOINTS = {
 
 FetchResult = tuple[str, dict[str, object] | None, str | None]
 ValidatedResult = tuple[str, BaseModel | None, str | None]
+EXPECTED_DATASETS = frozenset({"weather", "country", "ip_location"})
 
 Latitude = Annotated[float, Field(ge=-90, le=90)]
 Longitude = Annotated[float, Field(ge=-180, le=180)]
@@ -58,7 +60,7 @@ class ApiModel(BaseModel):
 class HourlyWeather(ApiModel):
     """Open-Meteo의 시간별 날씨 데이터이다."""
 
-    time: list[str] = Field(min_length=1)
+    time: list[datetime] = Field(min_length=1)
     temperature_2m: list[float] = Field(min_length=1)
     precipitation_probability: list[Probability] = Field(min_length=1)
 
@@ -304,6 +306,28 @@ def normalize_validated_data(
     return datasets
 
 
+def remove_generated_files(data_directory: Path = Path("data")) -> None:
+    """이 프로그램이 생성하는 CSV·Parquet 파일만 제거한다."""
+    for dataset_name in EXPECTED_DATASETS:
+        for file_format in ("csv", "parquet"):
+            path = data_directory / f"{dataset_name}.{file_format}"
+            path.unlink(missing_ok=True)
+
+
+def ensure_complete_datasets(
+    datasets: dict[str, pd.DataFrame],
+    data_directory: Path = Path("data"),
+) -> None:
+    """세 API 데이터가 모두 준비된 경우에만 저장을 허용한다."""
+    missing_datasets = EXPECTED_DATASETS.difference(datasets)
+    if missing_datasets:
+        remove_generated_files(data_directory)
+        missing_names = ", ".join(sorted(missing_datasets))
+        raise RuntimeError(
+            f"필수 데이터셋 누락으로 저장을 중단합니다: {missing_names}"
+        )
+
+
 def benchmark_storage(
     datasets: dict[str, pd.DataFrame],
     data_directory: Path = Path("data"),
@@ -373,6 +397,7 @@ def main() -> None:
 
     print()
     datasets = normalize_validated_data(validated_results)
+    ensure_complete_datasets(datasets)
     measurements = benchmark_storage(datasets)
     print_storage_summary(datasets, measurements)
 

@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from main import (
     WeatherResponse,
     benchmark_storage,
+    ensure_complete_datasets,
     normalize_validated_data,
 )
 
@@ -59,6 +60,15 @@ def test_weather_response_rejects_mismatched_arrays() -> None:
         WeatherResponse.model_validate(data)
 
 
+def test_weather_response_rejects_invalid_time() -> None:
+    """날짜·시간 형식이 아니면 Pydantic 검증에 실패해야 한다."""
+    data = valid_weather_data()
+    data["hourly"]["time"] = ["잘못된 시간", "2026-08-03T01:00"]
+
+    with pytest.raises(ValidationError):
+        WeatherResponse.model_validate(data)
+
+
 # Step 5: 검증 데이터를 두 파일 형식으로 저장하고 측정 결과를 확인한다.
 def test_normalize_and_store_weather_data(tmp_path) -> None:
     """정규화한 날씨 데이터를 CSV와 Parquet으로 저장해야 한다."""
@@ -71,3 +81,17 @@ def test_normalize_and_store_weather_data(tmp_path) -> None:
     assert set(measurements["format"]) == {"CSV", "PARQUET"}
     assert (tmp_path / "weather.csv").exists()
     assert (tmp_path / "weather.parquet").exists()
+
+
+def test_rejects_incomplete_datasets(tmp_path) -> None:
+    """API 누락 시 이전 생성 파일을 제거하고 검증에 실패해야 한다."""
+    stale_file = tmp_path / "weather.csv"
+    unrelated_file = tmp_path / "memo.txt"
+    stale_file.write_text("이전 실행 결과", encoding="utf-8")
+    unrelated_file.write_text("사용자 파일", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="필수 데이터셋 누락"):
+        ensure_complete_datasets({}, tmp_path)
+
+    assert not stale_file.exists()
+    assert unrelated_file.exists()
